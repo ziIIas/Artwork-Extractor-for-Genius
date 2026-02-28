@@ -88,12 +88,122 @@ chrome.storage.local.get([
 
         if (isGeniusSongFilterActivity) filterRecentActivity(profilePath);
 
+        enhanceMetadataTagsCopyPaste();
+
         if (songData.primary_tag.name !== "Non-Music") {
             if (isGeniusSongSpotifyPlayer) addSpotifyPlayer(songData);
         }
         if (songData.soundcloud_url) {
             if (isGeniusSongSoundCloudPlayer) addSoundCloudPlayer(songData);
         }
+    }
+
+    function enhanceMetadataTagsCopyPaste() {
+        const BUTTON_CLASS = 'genius-tags-copy-button';
+
+        const splitTags = (text) => text
+            .split(/[,\n]/)
+            .map(tag => tag.trim())
+            .filter(Boolean);
+
+        const isTagsFieldInput = (input) => {
+            if (!(input instanceof HTMLInputElement)) return false;
+
+            const fieldControl = input.closest('div[class*="FieldControlWithLabel"], div[class*="Field-shared__FieldControlWithLabel"]');
+            if (!fieldControl) return false;
+
+            return [...fieldControl.querySelectorAll('span')]
+                .some(span => span.textContent?.replace(/\u00a0/g, ' ').trim() === 'Tags');
+        };
+
+        const setReactInputValue = (input, value) => {
+            const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+            nativeSetter?.call(input, value);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        };
+
+        const pasteIntoReactTags = (input, tags) => {
+            tags.forEach((tag, index) => {
+                setTimeout(() => {
+                    input.focus();
+                    setReactInputValue(input, tag);
+                    input.dispatchEvent(new KeyboardEvent('keydown', {
+                        key: 'Enter',
+                        code: 'Enter',
+                        keyCode: 13,
+                        which: 13,
+                        bubbles: true
+                    }));
+                }, index * 110);
+            });
+        };
+
+        const ensureCopyButton = () => {
+            const tagLabels = [...document.querySelectorAll('span[class*="FieldLabel"], span')]
+                .filter(span => span.textContent?.replace(/\u00a0/g, ' ').trim() === 'Tags');
+
+            tagLabels.forEach((tagLabel) => {
+                const fieldControl = tagLabel.closest('div[class*="FieldControlWithLabel"], div[class*="Field-shared__FieldControlWithLabel"]');
+                if (!fieldControl || fieldControl.querySelector(`.${BUTTON_CLASS}`)) return;
+
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = BUTTON_CLASS;
+                button.textContent = 'Copy';
+                button.style.marginLeft = '0.5rem';
+                button.style.fontSize = '0.75rem';
+                button.style.border = '1px solid #d9d9d9';
+                button.style.background = '#fff';
+                button.style.cursor = 'pointer';
+
+                button.addEventListener('click', async (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    const tags = [...fieldControl.querySelectorAll('div[class*="TagInput__MultiValueLabel"], [class*="TagInput__MultiValueLabel-"]')]
+                        .map(tag => tag.textContent?.trim())
+                        .filter(Boolean);
+
+                    if (!tags.length) return;
+
+                    try {
+                        await navigator.clipboard.writeText(tags.join(', '));
+                        const originalText = button.textContent;
+                        button.textContent = 'Copied';
+                        setTimeout(() => {
+                            button.textContent = originalText;
+                        }, 1200);
+                    } catch (error) {
+                        console.warn('Could not copy tags to clipboard', error);
+                    }
+                });
+
+                tagLabel.insertAdjacentElement('afterend', button);
+            });
+        };
+
+        if (!document.body.dataset.geniusTagsPasteBound) {
+            document.body.dataset.geniusTagsPasteBound = 'true';
+
+            document.addEventListener('paste', (event) => {
+                const input = event.target;
+                if (!isTagsFieldInput(input)) return;
+
+                const clipboardText = event.clipboardData?.getData('text') ?? '';
+                if (!clipboardText.includes(',') && !clipboardText.includes('\n')) return;
+
+                const tags = splitTags(clipboardText);
+                if (!tags.length) return;
+
+                event.preventDefault();
+                pasteIntoReactTags(input, tags);
+            }, true);
+        }
+
+        ensureCopyButton();
+
+        const observer = new MutationObserver(ensureCopyButton);
+        observer.observe(document.body, { childList: true, subtree: true });
     }
 
 

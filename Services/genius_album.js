@@ -2624,6 +2624,39 @@ chrome.storage.local.get([
                     }
                 });
 
+                inputField.addEventListener('paste', async (event) => {
+                    if (name !== 'tags') return;
+
+                    const clipboardText = event.clipboardData?.getData('text') ?? '';
+                    if (!clipboardText.includes(',') && !clipboardText.includes('\n')) return;
+
+                    event.preventDefault();
+
+                    const tagQueries = clipboardText
+                        .split(/[,\n]/)
+                        .map(tag => tag.trim())
+                        .filter(Boolean);
+
+                    for (const query of tagQueries) {
+                        const suggestions = await fetchSuggestions('tags', query);
+
+                        const matchedSuggestion = suggestions.find(
+                            suggestion => suggestion.name?.toLowerCase() === query.toLowerCase()
+                        ) || suggestions[0];
+
+                        if (!matchedSuggestion) continue;
+
+                        const valueToAdd = { id: matchedSuggestion.id, name: matchedSuggestion.name };
+
+                        if (!tagsArray.some(tag => tag.id === valueToAdd.id)) {
+                            tagsArray.push(valueToAdd);
+                            addTag(tagsList, valueToAdd, name);
+                        }
+                    }
+
+                    inputField.value = '';
+                });
+
                 tagsDiv.appendChild(tagsList);
                 hostDiv.appendChild(tagsDiv);
                 tagsDiv.appendChild(inputField);
